@@ -6,13 +6,13 @@ using System.Text.Json;
 
 namespace DesafioComissao {
     public class Venda{
-        public string vendedor { get; set; }
+        public string vendedor { get; set; } = "";
         public double valor { get; set; }
     }
 
 
     public class Root {
-        public List<Venda> vendas { get; set; }
+        public List<Venda>? vendas { get; set; } = new();
     }
 
     class Program {
