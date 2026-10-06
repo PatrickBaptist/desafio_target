@@ -1,51 +1,69 @@
-﻿using System;
+using System.Globalization;
 
-namespace DesafioJuros
+namespace DesafioJuros;
+
+internal static class Program
 {
-    class Program
+    private static readonly CultureInfo Cultura = CultureInfo.GetCultureInfo("pt-BR");
+
+    private static int Main(string[] args)
     {
-        static void Main(string[] args)
+        Console.OutputEncoding = System.Text.Encoding.UTF8;
+        Console.WriteLine("== Cálculo de juros de 2,5% ao dia ==\n");
+
+        if (args.Contains("--demo", StringComparer.OrdinalIgnoreCase))
         {
-            Console.WriteLine("== Cálculo de Juros (2.5% ao dia) ==\n");
+            ExibirResultado(JurosService.Calcular(1_000m, DateOnly.FromDateTime(DateTime.Today.AddDays(-10))));
+            return 0;
+        }
 
-            double valor;
-            DateTime vencimento;
-
-            if (args.Length >= 2 && double.TryParse(args[0], out valor) && DateTime.TryParse(args[1], out vencimento))
+        if (args.Length >= 2)
+        {
+            if (!TentarLerValor(args[0], out var valor) || !TentarLerData(args[1], out var vencimento))
             {
-                ImprimeResultado(valor, vencimento);
-                return;
+                Console.Error.WriteLine("Argumentos inválidos. Use: dotnet run -- 1000,00 20/09/2026");
+                return 1;
             }
 
-            valor = 1000.00;
-            vencimento = new DateTime(DateTime.Today.Year, DateTime.Today.Month, Math.Max(1, DateTime.Today.Day - 10));
-
-            ImprimeResultado(valor, vencimento);
-
-
-            Console.WriteLine("\nExemplo com vencimento futuro (sem juros):");
-            ImprimeResultado(500, DateTime.Today.AddDays(5));
+            ExibirResultado(JurosService.Calcular(valor, vencimento));
+            return 0;
         }
 
-
-        static void ImprimeResultado(double valor, DateTime vencimento)
+        Console.Write("Valor original: R$ ");
+        if (!TentarLerValor(Console.ReadLine(), out var valorInformado))
         {
-            double juros = CalcularJuros(valor, vencimento);
-            Console.WriteLine($"Valor original: R${valor:F2}");
-            Console.WriteLine($"Vencimento: {vencimento:yyyy-MM-dd}");
-            Console.WriteLine($"Dias em atraso: {Math.Max(0, (DateTime.Today - vencimento).Days)}");
-            Console.WriteLine($"Juros aplicados: R${juros:F2}");
-            Console.WriteLine($"Valor final: R${valor + juros:F2}");
+            Console.Error.WriteLine("Valor inválido. Informe um número maior que zero.");
+            return 1;
         }
 
-        public static double CalcularJuros(double valor, DateTime vencimento)
+        Console.Write("Data de vencimento (dd/MM/aaaa): ");
+        if (!TentarLerData(Console.ReadLine(), out var vencimentoInformado))
         {
-            int diasAtraso = (DateTime.Today - vencimento).Days;
-            if (diasAtraso <= 0) return 0;
-
-
-            double multaDiaria = 0.025;
-            return valor * multaDiaria * diasAtraso;
+            Console.Error.WriteLine("Data inválida. Use o formato dd/MM/aaaa.");
+            return 1;
         }
+
+        ExibirResultado(JurosService.Calcular(valorInformado, vencimentoInformado));
+        return 0;
+    }
+
+    private static bool TentarLerValor(string? texto, out decimal valor)
+    {
+        return decimal.TryParse(texto, NumberStyles.Number, Cultura, out valor) && valor > 0;
+    }
+
+    private static bool TentarLerData(string? texto, out DateOnly data)
+    {
+        var formatos = new[] { "dd/MM/yyyy", "yyyy-MM-dd" };
+        return DateOnly.TryParseExact(texto, formatos, Cultura, DateTimeStyles.None, out data);
+    }
+
+    private static void ExibirResultado(ResultadoJuros resultado)
+    {
+        Console.WriteLine($"\nValor original: {resultado.ValorOriginal.ToString("C", Cultura)}");
+        Console.WriteLine($"Vencimento: {resultado.Vencimento:dd/MM/yyyy}");
+        Console.WriteLine($"Dias em atraso: {resultado.DiasEmAtraso}");
+        Console.WriteLine($"Juros: {resultado.Juros.ToString("C", Cultura)}");
+        Console.WriteLine($"Valor final: {resultado.ValorFinal.ToString("C", Cultura)}");
     }
 }

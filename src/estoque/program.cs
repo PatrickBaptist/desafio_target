@@ -1,92 +1,134 @@
-﻿using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
 using System.Text.Json;
 
-namespace DesafioEstoque {
-    public class Produto
-    {
-        public int codigoProduto { get; set; }
-        public string descricaoProduto { get; set; }
-        public int estoque { get; set; }
-    }
+namespace DesafioEstoque;
 
-    public class RootEstoque
+internal static class Program
+{
+    private static int Main(string[] args)
     {
-        public List<Produto> estoque { get; set; }
-    }
+        Console.OutputEncoding = System.Text.Encoding.UTF8;
 
-    public class Movimentacao
-    {
-        public Guid ID { get; set; } = Guid.NewGuid();
-        public string Descricao { get; set; }
-        public int Quantidade { get; set; }
-        public bool Entrada { get; set; }
-    }
-
-    class Program
-    {
-        static void Main(string[] args)
+        try
         {
-            var path = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "estoque", "estoque.json");
-            path = Path.GetFullPath(path);
+            var caminho = Path.Combine(AppContext.BaseDirectory, "estoque.json");
+            var arquivo = CarregarEstoque(caminho);
+            var servico = new EstoqueService(arquivo.Estoque);
 
-            if (!File.Exists(path))
+            if (args.Contains("--demo", StringComparer.OrdinalIgnoreCase))
             {
-                Console.WriteLine("Arquivo estoque.json não encontrado: " + path);
-                return;
+                ExecutarDemonstracao(servico);
+                return 0;
             }
 
-            var json = File.ReadAllText(path);
-            var dados = JsonSerializer.Deserialize<RootEstoque>(json);
+            ExecutarMenu(servico);
+            return 0;
+        }
+        catch (Exception ex) when (ex is IOException or JsonException or ArgumentException)
+        {
+            Console.Error.WriteLine($"Erro ao iniciar o estoque: {ex.Message}");
+            return 1;
+        }
+    }
 
-            if (dados?.estoque == null)
-            {
-                Console.WriteLine("Erro ao carregar estoque do JSON");
-                return;
-            }
-
-            Console.WriteLine("== Movimentação de Estoque ==\n");
-
-            var mov1 = new Movimentacao { Descricao = "Entrada de cadernos (reposição)", Quantidade = 20, Entrada = true };
-            MovimentarProduto(dados.estoque, 102, mov1);
-
-            var mov2 = new Movimentacao { Descricao = "Venda - pedido #1234", Quantidade = 15, Entrada = false };
-            MovimentarProduto(dados.estoque, 105, mov2);
-
-            var mov3 = new Movimentacao { Descricao = "Venda grande", Quantidade = 1000, Entrada = false };
-            MovimentarProduto(dados.estoque, 103, mov3);
+    private static EstoqueArquivo CarregarEstoque(string caminho)
+    {
+        if (!File.Exists(caminho))
+        {
+            throw new FileNotFoundException("Arquivo de estoque não encontrado.", caminho);
         }
 
-        public static void MovimentarProduto(List<Produto> estoque, int codigo, Movimentacao mov)
+        var json = File.ReadAllText(caminho);
+        var arquivo = JsonSerializer.Deserialize<EstoqueArquivo>(json, JsonOptions.Padrao)
+            ?? throw new JsonException("O JSON de estoque está vazio ou inválido.");
+
+        if (arquivo.Estoque.Count == 0)
         {
-            var produto = estoque.Find(p => p.codigoProduto == codigo);
-
-            if (produto == null)
-            {
-                Console.WriteLine($"Produto com código {codigo} não encontrado.\n");
-                return;
-            }
-
-            if (!mov.Entrada && mov.Quantidade > produto.estoque)
-            {
-                Console.WriteLine(
-                    $"Erro: estoque insuficiente para '{produto.descricaoProduto}' " +
-                    $"(Solicitado: {mov.Quantidade}, Disponível: {produto.estoque}). " +
-                    $"ID Movimentação: {mov.ID}\n"
-                );
-                return;
-            }
-
-            produto.estoque += mov.Entrada ? mov.Quantidade : -mov.Quantidade;
-
-            Console.WriteLine($"ID: {mov.ID}");
-            Console.WriteLine($"Produto: {produto.descricaoProduto}");
-            Console.WriteLine($"Descrição: {mov.Descricao}");
-            Console.WriteLine($"Tipo: {(mov.Entrada ? "Entrada" : "Saída")}");
-            Console.WriteLine($"Quantidade: {mov.Quantidade}");
-            Console.WriteLine($"Estoque final: {produto.estoque}\n");        
+            throw new ArgumentException("O JSON não contém produtos.");
         }
+
+        return arquivo;
+    }
+
+    private static void ExecutarMenu(EstoqueService servico)
+    {
+        Console.WriteLine("== Movimentação de estoque ==");
+
+        while (true)
+        {
+            ExibirProdutos(servico.Produtos);
+            Console.Write("\nCódigo do produto (ou 0 para sair): ");
+
+            if (!int.TryParse(Console.ReadLine(), out var codigo))
+            {
+                Console.WriteLine("Código inválido. Digite um número inteiro.");
+                continue;
+            }
+
+            if (codigo == 0)
+            {
+                return;
+            }
+
+            Console.Write("Tipo [E]ntrada ou [S]aída: ");
+            var tipoDigitado = Console.ReadLine()?.Trim();
+            var tipo = tipoDigitado?.ToUpperInvariant() switch
+            {
+                "E" => TipoMovimentacao.Entrada,
+                "S" => TipoMovimentacao.Saida,
+                _ => (TipoMovimentacao?)null
+            };
+
+            if (tipo is null)
+            {
+                Console.WriteLine("Tipo inválido. Digite E ou S.");
+                continue;
+            }
+
+            Console.Write("Quantidade: ");
+            if (!int.TryParse(Console.ReadLine(), out var quantidade) || quantidade <= 0)
+            {
+                Console.WriteLine("A quantidade deve ser um número inteiro maior que zero.");
+                continue;
+            }
+
+            Console.Write("Descrição da movimentação: ");
+            var descricao = Console.ReadLine() ?? string.Empty;
+
+            var resultado = servico.Movimentar(codigo, tipo.Value, quantidade, descricao);
+            ExibirResultado(resultado);
+        }
+    }
+
+    private static void ExecutarDemonstracao(EstoqueService servico)
+    {
+        Console.WriteLine("== Demonstração de movimentação de estoque ==\n");
+        ExibirResultado(servico.Movimentar(102, TipoMovimentacao.Entrada, 20, "Entrada de cadernos para reposição"));
+        ExibirResultado(servico.Movimentar(105, TipoMovimentacao.Saida, 15, "Saída referente ao pedido 1234"));
+    }
+
+    private static void ExibirProdutos(IEnumerable<Produto> produtos)
+    {
+        Console.WriteLine("\nProdutos disponíveis:");
+        foreach (var produto in produtos.OrderBy(produto => produto.CodigoProduto))
+        {
+            Console.WriteLine($"  {produto.CodigoProduto} - {produto.DescricaoProduto} (estoque: {produto.QuantidadeEmEstoque})");
+        }
+    }
+
+    private static void ExibirResultado(ResultadoMovimentacao resultado)
+    {
+        if (!resultado.Sucesso)
+        {
+            Console.WriteLine($"\nMovimentação não realizada: {resultado.Mensagem}\n");
+            return;
+        }
+
+        var movimentacao = resultado.Movimentacao!;
+        Console.WriteLine($"\nID: {movimentacao.Id}");
+        Console.WriteLine($"Produto: {resultado.Produto!.DescricaoProduto}");
+        Console.WriteLine($"Descrição: {movimentacao.Descricao}");
+        Console.WriteLine($"Tipo: {(movimentacao.Tipo == TipoMovimentacao.Entrada ? "Entrada" : "Saída")}");
+        Console.WriteLine($"Quantidade movimentada: {movimentacao.Quantidade}");
+        Console.WriteLine($"Estoque final: {resultado.EstoqueFinal}\n");
     }
 }

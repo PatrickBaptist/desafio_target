@@ -1,17 +1,15 @@
-set -e
+#!/usr/bin/env bash
+set -euo pipefail
 BASE_DIR=$(dirname "$(realpath "$0")")
 
+echo "Executando desafio de comissão..."
+dotnet run --project "$BASE_DIR/src/comissao/comissao.csproj"
 
-echo "Executando DesafioComissao..."
-cd "$BASE_DIR/src/comissao"
-dotnet run
+printf '\nExecutando demonstração do desafio de estoque...\n'
+dotnet run --project "$BASE_DIR/src/estoque/estoque.csproj" -- --demo
 
+printf '\nExecutando demonstração do desafio de juros...\n'
+dotnet run --project "$BASE_DIR/src/juros/juros.csproj" -- --demo
 
-echo "\nExecutando DesafioEstoque..."
-cd "$BASE_DIR/src/estoque"
-dotnet run
-
-
-echo "\nExecutando DesafioJuros..."
-cd "$BASE_DIR/src/juros"
-dotnet run
+printf '\nExecutando testes...\n'
+dotnet run --project "$BASE_DIR/tests/DesafioTarget.Testes/DesafioTarget.Testes.csproj"
